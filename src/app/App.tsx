@@ -1,10 +1,7 @@
 import { useRef, useState } from 'react'
 import type { DragEvent, ChangeEvent } from 'react'
 import { processUploadedFiles } from '../features/pdf-upload/services/upload-processor'
-import type {
-  UploadProcessingResult,
-  UploadedPdf,
-} from '../features/pdf-upload/services/upload-processor'
+import type { UploadProcessingResult } from '../features/pdf-upload/services/upload-processor'
 import './App.css'
 
 const UPLOAD_OPTIONS = {
