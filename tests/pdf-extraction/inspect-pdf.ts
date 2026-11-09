@@ -1,4 +1,3 @@
-
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { extractPdfText } from '../../src/features/pdf-extraction/services/pdf-extractor'
@@ -10,22 +9,12 @@ const fileNames = [
 ]
 
 const datePattern = /^\d{2}\s+[A-Za-z]{3}\s+\d{4},?$/
-const amountPattern = /^\d{1,3}(?:,\d{3})*\.\d{2}$/
-
-const columns = {
-  DEBIT: { min: 330, max: 410 },
-  CREDIT: { min: 410, max: 490 },
-  BALANCE: { min: 490, max: 580 },
-}
+const continuationThreshold = 40
 
 for (const fileName of fileNames) {
-  const filePath = resolve(
-    process.cwd(),
-    'tests/fixtures/golden',
-    fileName,
+  const buffer = await readFile(
+    resolve(process.cwd(), 'tests/fixtures/golden', fileName),
   )
-
-  const buffer = await readFile(filePath)
 
   const file = new File(
     [new Uint8Array(buffer)],
@@ -35,72 +24,47 @@ for (const fileName of fileNames) {
 
   const result = await extractPdfText(file)
 
-  let totalDates = 0
-  let totalMatched = 0
-  let totalFailed = 0
-
   console.log(`\n========== ${fileName} ==========`)
 
-  for (const page of result.pages) {
-    const dates = page.items
+  for (let i = 1; i < result.pages.length; i++) {
+    const currentPage = result.pages[i]
+
+    const dates = currentPage.items
       .filter(
         (item) =>
           item.x >= 30 &&
-          item.x <= 80 &&
+          item.x < 80 &&
           datePattern.test(item.text.trim()),
       )
       .sort((a, b) => b.y - a.y)
 
-    for (const date of dates) {
-      totalDates++
+    const firstDate = dates[0]
 
-      const targetY = date.y - 4.66
+    if (!firstDate) continue
 
-      const values = Object.entries(columns).map(([column, range]) => {
-        const candidates = page.items
-          .filter(
-            (item) =>
-              item.x >= range.min &&
-              item.x <= range.max &&
-              amountPattern.test(item.text.trim()),
-          )
-          .map((item) => ({
-            text: item.text.trim(),
-            y: item.y,
-            difference: Number((item.y - targetY).toFixed(2)),
-          }))
-          .filter((item) => Math.abs(item.difference) <= 12)
-          .sort(
-            (a, b) =>
-              Math.abs(a.difference) - Math.abs(b.difference),
-          )
-
-        return candidates[0]
-      })
-
-      const matched = values.every(
-        (value) => value !== undefined,
+    const candidates = currentPage.items
+      .filter(
+        (item) =>
+          item.x >= 100 &&
+          item.x < 235 &&
+          item.text.trim() !== '' &&
+          item.text.trim() !== 'Remark' &&
+          item.y > firstDate.y + continuationThreshold,
       )
+      .sort((a, b) => b.y - a.y)
 
-      if (matched) {
-        totalMatched++
-      } else {
-        totalFailed++
-      }
+    if (candidates.length === 0) continue
 
-      if (!matched) {
-        console.log(
-          `GAGAL | Halaman ${page.pageNumber} | ${date.text} | ` +
-          values.map((value, index) =>
-            `${Object.keys(columns)[index]}: ${value?.text ?? 'TIDAK DITEMUKAN'}`
-          ).join(' | '),
-        )
-      }
+    console.log(
+      `\nHalaman ${currentPage.pageNumber} | Tanggal pertama: ${firstDate.text.trim()}`,
+    )
+
+    for (const item of candidates) {
+      const gap = item.y - firstDate.y
+
+      console.log(
+        `  Gap ${gap.toFixed(2)} | ${item.text.trim()}`,
+      )
     }
   }
-
-  console.log(`Total halaman : ${result.totalPages}`)
-  console.log(`Total tanggal : ${totalDates}`)
-  console.log(`Berhasil      : ${totalMatched}`)
-  console.log(`Gagal         : ${totalFailed}`)
 }
