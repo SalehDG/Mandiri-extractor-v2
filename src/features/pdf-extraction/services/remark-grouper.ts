@@ -1,4 +1,3 @@
-
 import type {
   ExtractedPdf,
   ExtractedPage,
@@ -8,6 +7,7 @@ import type {
 export interface RemarkGroup {
   pageNumber: number
   date: string
+  dateY: number
   items: ExtractedTextItem[]
 }
 
@@ -33,18 +33,38 @@ function getTransactionDates(page: ExtractedPage) {
     .sort((a, b) => b.y - a.y)
 }
 
+
 function getRemarkItems(page: ExtractedPage) {
+  const remarkHeader =
+    page.pageNumber === 1
+      ? page.items.find(
+          (item) =>
+            item.x >= REMARK_X_MIN &&
+            item.x < REMARK_X_MAX &&
+            item.text.trim() === 'Remark',
+        )
+      : undefined
+
   return page.items
-    .filter(
-      (item) =>
-        item.x >= REMARK_X_MIN &&
-        item.x < REMARK_X_MAX &&
-        item.y >= FOOTER_Y_MIN &&
-        item.text.trim() !== '' &&
-        item.text.trim() !== 'Remark',
-    )
+    .filter((item) => {
+      const text = item.text.trim()
+
+      if (
+        item.x < REMARK_X_MIN ||
+        item.x >= REMARK_X_MAX ||
+        item.y < FOOTER_Y_MIN ||
+        text === '' ||
+        text === 'Remark' ||
+        (remarkHeader && item.y >= remarkHeader.y)
+      ) {
+        return false
+      }
+
+      return true
+    })
     .sort((a, b) => b.y - a.y)
 }
+
 
 function getTransactionIndex(
   item: ExtractedTextItem,
@@ -63,9 +83,7 @@ function getTransactionIndex(
   return dates.length - 1
 }
 
-export function groupPdfRemarks(
-  pdf: ExtractedPdf,
-): RemarkGroup[] {
+export function groupPdfRemarks(pdf: ExtractedPdf): RemarkGroup[] {
   const groups: RemarkGroup[] = []
 
   for (const page of pdf.pages) {
@@ -73,39 +91,36 @@ export function groupPdfRemarks(
 
     if (dates.length === 0) continue
 
+    const firstDate = dates[0]
     const remarks = getRemarkItems(page)
 
     const pageGroups: RemarkGroup[] = dates.map((date) => ({
       pageNumber: page.pageNumber,
       date: date.text.trim().replace(/,$/, ''),
+      dateY: date.y,
       items: [],
     }))
 
     for (const item of remarks) {
-      const firstDate = dates[0]
-
       // PRMA reference belongs to its corresponding PRMA transaction.
       if (/^\/PRM-/i.test(item.text.trim())) {
         const prmaStart = remarks
-        .filter(
+          .filter(
             (candidate) =>
-            candidate.y > item.y &&
-            candidate.text.trim() === 'PRMA CR Transf',
-  )
-  .sort((a, b) => a.y - b.y)[0]
+              candidate.y > item.y &&
+              candidate.text.trim() === 'PRMA CR Transf',
+          )
+          .sort((a, b) => a.y - b.y)[0]
 
         if (prmaStart) {
-          const prmaIndex = getTransactionIndex(
-            prmaStart,
-            dates,
-          )
-
+          const prmaIndex = getTransactionIndex(prmaStart, dates)
           pageGroups[prmaIndex].items.push(item)
           continue
         }
       }
 
-      // Attach continuation items to the previous page's last transaction.
+      // On later pages, text above the first date may continue the
+      // previous page's last transaction. Keep this behavior unchanged.
       const isContinuation =
         page.pageNumber > 1 &&
         item.y > firstDate.y + PAGE_CONTINUATION_GAP
@@ -120,7 +135,6 @@ export function groupPdfRemarks(
       }
 
       const transactionIndex = getTransactionIndex(item, dates)
-
       pageGroups[transactionIndex].items.push(item)
     }
 

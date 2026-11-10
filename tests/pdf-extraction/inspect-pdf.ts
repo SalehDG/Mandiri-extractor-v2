@@ -2,6 +2,7 @@
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { extractPdfText } from '../../src/features/pdf-extraction/services/pdf-extractor'
+import type { ExtractedPage } from '../../src/features/pdf-extraction/types/extracted-text'
 
 const files = [
   'rekening-1.pdf',
@@ -10,6 +11,42 @@ const files = [
 ]
 
 const DATE_PATTERN = /^\d{2}\s+[A-Za-z]{3}\s+\d{4},?$/
+
+
+function inspectFirstPageHeader(
+  fileName: string,
+  page: ExtractedPage,
+) {
+  const firstDate = page.items
+    .filter(
+      (item) =>
+        item.x >= 30 &&
+        item.x < 80 &&
+        DATE_PATTERN.test(item.text.trim()),
+    )
+    .sort((a, b) => b.y - a.y)[0]
+
+  console.log('\n--- HEADER HALAMAN PERTAMA ---')
+  console.log(`File: ${fileName}`)
+  console.log(`Tanggal transaksi pertama: ${firstDate?.text ?? 'Tidak ditemukan'}`)
+  console.log(`Posisi tanggal: Y=${firstDate?.y.toFixed(2) ?? '-'}`)
+
+  const items = page.items
+    .filter(
+      (item) =>
+        item.x >= 90 &&
+        item.x < 250 &&
+        item.text.trim() !== '',
+    )
+    .sort((a, b) => b.y - a.y || a.x - b.x)
+
+  for (const item of items) {
+    console.log(
+      `[X=${item.x.toFixed(2)}, Y=${item.y.toFixed(2)}] ${item.text}`,
+    )
+  }
+}
+
 
 async function inspectFile(fileName: string) {
   const filePath = resolve(
@@ -28,6 +65,7 @@ async function inspectFile(fileName: string) {
   const pdf = await extractPdfText(file)
 
   console.log(`\n========== ${fileName} ==========`)
+  inspectFirstPageHeader(fileName, pdf.pages[0])
 
   for (let i = 0; i < pdf.pages.length - 1; i++) {
     const currentPage = pdf.pages[i]
