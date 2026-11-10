@@ -501,3 +501,250 @@ button:disabled {
     font-size: 10px;
   }
 }
+
+.extract-button {
+  width: 100%;
+  min-height: 48px;
+  margin-top: 10px;
+  border: 1px solid #0866ed;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #0866ed;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.extract-button:hover:not(:disabled) {
+  background: #edf4ff;
+}
+
+.extract-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.copy-message {
+  margin: 0;
+  padding: 9px 18px;
+  color: #087443;
+  background: #effbf5;
+  border-bottom: 1px solid #d9f2e4;
+  font-size: 12px;
+}
+
+.result-tabs {
+  display: flex;
+  gap: 7px;
+  padding: 12px 16px;
+  overflow-x: auto;
+  border-bottom: 1px solid #e9edf4;
+}
+
+.result-tab {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 230px;
+  min-height: 36px;
+  padding: 0 11px;
+  border: 1px solid #e1e8f2;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #405477;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.result-tab > span {
+  padding: 3px 6px;
+  border-radius: 5px;
+  background: #f0f4fa;
+  color: #52627a;
+  font-size: 10px;
+}
+
+.result-tab.active {
+  border-color: #0866ed;
+  background: #edf4ff;
+  color: #0757ce;
+}
+
+.result-tab.active > span {
+  background: #d9e9ff;
+  color: #0757ce;
+}
+
+.result-summary {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 13px 18px;
+  border-bottom: 1px solid #edf0f5;
+  color: #405477;
+  font-size: 12px;
+}
+
+.validation-ok {
+  color: #087443;
+}
+
+.validation-warning {
+  color: #a66b00;
+}
+
+.copy-file-button {
+  margin-left: auto;
+  padding: 6px 10px;
+  border: 1px solid #dce5f1;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #0866ed;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.validation-details {
+  padding: 10px 18px;
+  color: #946200;
+  background: #fffaf0;
+  border-bottom: 1px solid #f4e7c7;
+  font-size: 12px;
+}
+
+.validation-details summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.validation-details ul {
+  display: grid;
+  gap: 5px;
+  margin: 10px 0 2px;
+  padding-left: 18px;
+}
+
+.transaction-table-wrap {
+  width: 100%;
+  flex: 1;
+  overflow: auto;
+}
+
+.transaction-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  text-align: left;
+}
+
+.transaction-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 12px 13px;
+  background: #f7f9fc;
+  border-bottom: 1px solid #e4eaf2;
+  color: #34466a;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.transaction-table td {
+  padding: 11px 13px;
+  border-bottom: 1px solid #edf0f5;
+  color: #24324a;
+  vertical-align: top;
+}
+
+.transaction-table tbody tr:hover {
+  background: #f8fbff;
+}
+
+.transaction-table td:nth-child(2) {
+  min-width: 220px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.transaction-table td:nth-child(3) {
+  min-width: 130px;
+}
+
+.transaction-table .amount-cell {
+  min-width: 110px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.result-message {
+  margin: auto;
+  padding: 35px;
+  text-align: center;
+}
+
+.result-message.error {
+  color: #b42318;
+}
+
+.result-message h3 {
+  margin: 0 0 8px;
+}
+
+.result-message p {
+  margin: 0;
+  font-size: 13px;
+}
+
+.extracting-overlay {
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  border-radius: 17px;
+  background: rgb(255 255 255 / 88%);
+  color: #0866ed;
+  font-size: 13px;
+  backdrop-filter: blur(2px);
+}
+
+.extracting-overlay .spinner {
+  width: 28px;
+  height: 28px;
+  border-width: 3px;
+}
+
+.extracting-overlay span:last-child {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.preview-panel {
+  position: relative;
+  overflow: hidden;
+}
+
+@media (max-width: 600px) {
+  .preview-actions {
+    flex-wrap: wrap;
+  }
+
+  .result-summary {
+    align-items: flex-start;
+  }
+
+  .copy-file-button {
+    margin-left: 0;
+  }
+
+  .transaction-table {
+    min-width: 760px;
+  }
+}

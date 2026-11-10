@@ -1,7 +1,16 @@
 import { useRef, useState } from 'react'
-import type { DragEvent, ChangeEvent } from 'react'
+import type { ChangeEvent, DragEvent } from 'react'
 import { processUploadedFiles } from '../features/pdf-upload/services/upload-processor'
-import type { UploadProcessingResult } from '../features/pdf-upload/services/upload-processor'
+import type {
+  UploadProcessingResult,
+  UploadedPdf,
+} from '../features/pdf-upload/services/upload-processor'
+import { extractTransactionsFromPdf } from '../features/transaction-extraction/services/transaction-extraction'
+import { downloadTransactionsCsv } from '../features/excel-export/services/csv-exporter'
+import type {
+  TransactionOutput,
+  TransactionValidationResult,
+} from '../features/transaction-parser/types/transaction'
 import './App.css'
 
 const UPLOAD_OPTIONS = {
@@ -9,11 +18,32 @@ const UPLOAD_OPTIONS = {
   maxEntries: 500,
 }
 
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(0)} KB`
-  }
+interface FileExtractionResult {
+  id: string
+  fileName: string
+  sourcePath: string
+  pageCount: number
+  transactions: TransactionOutput[]
+  validation: TransactionValidationResult
+  error: string
+}
 
+const EMPTY_UPLOAD_RESULT: UploadProcessingResult = {
+  uniquePdfs: [],
+  duplicates: [],
+  rejectedFiles: [],
+}
+
+const OUTPUT_COLUMNS: (keyof TransactionOutput)[] = [
+  'TGL/BLN/THN',
+  'URAIAN',
+  'NAMA',
+  'DEBET',
+  'KREDIT',
+]
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
@@ -23,68 +53,97 @@ function App() {
 
   const [isDragging, setIsDragging] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
-  const [result, setResult] = useState<UploadProcessingResult>({
-    uniquePdfs: [],
-    duplicates: [],
-    rejectedFiles: [],
-  })
-  const [duplicateDecision, setDuplicateDecision] = useState<
-    'include' | 'exclude' | null
-  >(null)
+  const [isExtracting, setIsExtracting] = useState(false)
+  const [result, setResult] = useState<UploadProcessingResult>(EMPTY_UPLOAD_RESULT)
+  const [duplicateDecision, setDuplicateDecision] = useState<'include' | 'exclude' | null>(null)
+  const [extractionResults, setExtractionResults] = useState<FileExtractionResult[]>([])
+  const [selectedResultId, setSelectedResultId] = useState('')
   const [error, setError] = useState('')
+  const [copyMessage, setCopyMessage] = useState('')
 
   async function handleFiles(fileList: FileList | File[]) {
     const files = Array.from(fileList)
-
     if (files.length === 0) return
 
     setIsProcessing(true)
     setError('')
-    setDuplicateDecision(null)
+    setCopyMessage('')
 
     try {
-      const processingResult = await processUploadedFiles(
-        files,
-        UPLOAD_OPTIONS,
-      )
-
+      const processingResult = await processUploadedFiles(files, UPLOAD_OPTIONS)
       setResult((previous) => ({
-        uniquePdfs: [
-          ...previous.uniquePdfs,
-          ...processingResult.uniquePdfs,
-        ],
-        duplicates: [
-          ...previous.duplicates,
-          ...processingResult.duplicates,
-        ],
-        rejectedFiles: [
-          ...previous.rejectedFiles,
-          ...processingResult.rejectedFiles,
-        ],
+        uniquePdfs: [...previous.uniquePdfs, ...processingResult.uniquePdfs],
+        duplicates: [...previous.duplicates, ...processingResult.duplicates],
+        rejectedFiles: [...previous.rejectedFiles, ...processingResult.rejectedFiles],
       }))
 
       if (processingResult.duplicates.length > 0) {
         const shouldContinue = window.confirm(
-          `Ditemukan ${processingResult.duplicates.length} file duplikat. Apakah kamu ingin tetap melanjutkan dengan file duplikat tersebut?`,
+          `Ditemukan ${processingResult.duplicates.length} file duplikat. Sertakan file duplikat pada proses ekstraksi?`,
         )
-
-        setDuplicateDecision(
-          shouldContinue ? 'include' : 'exclude',
-        )
+        setDuplicateDecision(shouldContinue ? 'include' : 'exclude')
       }
-    } catch {
-      setError('Terjadi kesalahan saat memproses file.')
+    } catch (processingError) {
+      setError(
+        processingError instanceof Error
+          ? processingError.message
+          : 'Terjadi kesalahan saat memproses file.',
+      )
     } finally {
       setIsProcessing(false)
     }
   }
 
-  function handleInputChange(event: ChangeEvent<HTMLInputElement>) {
-    if (event.target.files) {
-      void handleFiles(event.target.files)
+  async function handleExtract() {
+    const filesToExtract: UploadedPdf[] = [
+      ...result.uniquePdfs,
+      ...(duplicateDecision === 'include' ? result.duplicates.map((item) => item.file) : []),
+    ]
+
+    if (filesToExtract.length === 0 || isExtracting) return
+
+    setIsExtracting(true)
+    setError('')
+    setCopyMessage('')
+
+    const nextResults: FileExtractionResult[] = []
+
+    for (const [index, item] of filesToExtract.entries()) {
+      try {
+        const extraction = await extractTransactionsFromPdf(item.file)
+
+        nextResults.push({
+          id: `${item.sourcePath}-${index}-${item.file.size}`,
+          fileName: item.file.name,
+          sourcePath: item.sourcePath,
+          pageCount: extraction.pageCount,
+          transactions: extraction.transactions,
+          validation: extraction.validation,
+          error: '',
+        })
+      } catch (extractionError) {
+        nextResults.push({
+          id: `${item.sourcePath}-${index}-${item.file.size}`,
+          fileName: item.file.name,
+          sourcePath: item.sourcePath,
+          pageCount: 0,
+          transactions: [],
+          validation: { isValid: false, issues: [], balanceChecks: 0 },
+          error:
+            extractionError instanceof Error
+              ? extractionError.message
+              : 'Gagal mengekstrak dokumen.',
+        })
+      }
     }
 
-    // Memungkinkan file yang sama dipilih kembali.
+    setExtractionResults(nextResults)
+    setSelectedResultId(nextResults.find((item) => item.transactions.length > 0)?.id ?? nextResults[0]?.id ?? '')
+    setIsExtracting(false)
+  }
+
+  function handleInputChange(event: ChangeEvent<HTMLInputElement>) {
+    if (event.target.files) void handleFiles(event.target.files)
     event.target.value = ''
   }
 
@@ -101,7 +160,6 @@ function App() {
   function handleDragLeave(event: DragEvent<HTMLElement>) {
     event.preventDefault()
     dragCounter.current -= 1
-
     if (dragCounter.current <= 0) {
       dragCounter.current = 0
       setIsDragging(false)
@@ -112,24 +170,43 @@ function App() {
     event.preventDefault()
     dragCounter.current = 0
     setIsDragging(false)
-
     void handleFiles(event.dataTransfer.files)
   }
 
   function removeAllFiles() {
-    setResult({
-      uniquePdfs: [],
-      duplicates: [],
-      rejectedFiles: [],
-    })
+    setResult(EMPTY_UPLOAD_RESULT)
     setDuplicateDecision(null)
+    setExtractionResults([])
+    setSelectedResultId('')
     setError('')
+    setCopyMessage('')
+  }
+
+  async function copyTransactions(transactions: TransactionOutput[], label: string) {
+    if (transactions.length === 0) return
+    const text = [
+      OUTPUT_COLUMNS.join('\t'),
+      ...transactions.map((transaction) =>
+        OUTPUT_COLUMNS.map((column) => String(transaction[column])).join('\t'),
+      ),
+    ].join('\n')
+
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopyMessage(`${label} berhasil disalin.`)
+    } catch {
+      setCopyMessage('Tidak dapat menyalin. Periksa izin clipboard browser.')
+    }
   }
 
   const totalFiles =
-    result.uniquePdfs.length +
-    result.duplicates.length +
-    result.rejectedFiles.length
+    result.uniquePdfs.length + result.duplicates.length + result.rejectedFiles.length
+  const selectedResult =
+    extractionResults.find((item) => item.id === selectedResultId) ?? null
+  const hasExtractableFiles =
+    result.uniquePdfs.length > 0 ||
+    (result.duplicates.length > 0 && duplicateDecision === 'include')
+  const allTransactions = extractionResults.flatMap((item) => item.transactions)
 
   return (
     <main
@@ -156,7 +233,6 @@ function App() {
               <path d="M4 12h24v3H4zM7 16h3v9H7zm7 0h3v9h-3zm7 0h3v9h-3zM4 26h24v3H4zM16 3 3 10h26L16 3z" />
             </svg>
           </div>
-
           <div>
             <h1>Mandiri Extractor V2</h1>
             <p>Bank Statement Data Processor</p>
@@ -178,10 +254,18 @@ function App() {
           <button
             className="upload-button"
             onClick={() => inputRef.current?.click()}
-            disabled={isProcessing}
+            disabled={isProcessing || isExtracting}
           >
             <span className="upload-plus">+</span>
             {isProcessing ? 'Memproses file...' : 'Pilih PDF / ZIP'}
+          </button>
+
+          <button
+            className="extract-button"
+            onClick={() => void handleExtract()}
+            disabled={!hasExtractableFiles || isProcessing || isExtracting}
+          >
+            {isExtracting ? 'Mengekstrak transaksi...' : 'Ekstrak Data'}
           </button>
 
           <div className="document-heading">
@@ -189,11 +273,10 @@ function App() {
               <h2>Daftar Dokumen</h2>
               <span className="file-count">{totalFiles} file</span>
             </div>
-
             <button
               className="clear-button"
               onClick={removeAllFiles}
-              disabled={totalFiles === 0 || isProcessing}
+              disabled={totalFiles === 0 || isProcessing || isExtracting}
             >
               Hapus Semua
             </button>
@@ -201,14 +284,12 @@ function App() {
 
           {error && <p className="error-message">{error}</p>}
 
-          {result.uniquePdfs.length === 0 &&
-            result.duplicates.length === 0 &&
-            result.rejectedFiles.length === 0 && (
-              <div className="empty-documents">
-                <p>Belum ada dokumen.</p>
-                <span>Upload PDF atau ZIP untuk memulai.</span>
-              </div>
-            )}
+          {totalFiles === 0 && (
+            <div className="empty-documents">
+              <p>Belum ada dokumen.</p>
+              <span>Upload PDF atau ZIP untuk memulai.</span>
+            </div>
+          )}
 
           {result.uniquePdfs.map((item) => (
             <DocumentItem
@@ -247,11 +328,11 @@ function App() {
             </div>
           )}
 
-          {duplicateDecision && (
+          {duplicateDecision && result.duplicates.length > 0 && (
             <p className="decision-message">
               {duplicateDecision === 'include'
-                ? 'Duplikat diizinkan untuk tahap berikutnya.'
-                : 'File duplikat tidak akan disertakan.'}
+                ? 'File duplikat akan ikut diekstrak.'
+                : 'File duplikat tidak disertakan.'}
             </p>
           )}
         </aside>
@@ -259,31 +340,134 @@ function App() {
         <section className="preview-panel">
           <div className="preview-header">
             <div className="preview-file">
-              <div className="preview-file-icon">PDF</div>
+              <div className="preview-file-icon">CSV</div>
               <div>
-                <h2>Belum ada dokumen dipilih</h2>
-                <p>Hasil transaksi akan ditampilkan di sini.</p>
+                <h2>{selectedResult?.fileName ?? 'Hasil Ekstraksi'}</h2>
+                <p>
+                  {selectedResult
+                    ? `${selectedResult.pageCount} halaman · ${selectedResult.transactions.length} transaksi`
+                    : 'Hasil transaksi akan ditampilkan di sini.'}
+                </p>
               </div>
             </div>
 
             <div className="preview-actions">
-              <button className="secondary-button" disabled>
+              <button
+                className="secondary-button"
+                disabled={allTransactions.length === 0}
+                onClick={() => void copyTransactions(allTransactions, 'Semua transaksi')}
+              >
                 Copy Semua
               </button>
-              <button className="export-button" disabled>
-                Ekspor ke Excel
+              <button
+                className="export-button"
+                disabled={!selectedResult || selectedResult.transactions.length === 0}
+                onClick={() => {
+                  if (selectedResult) {
+                    downloadTransactionsCsv(selectedResult.fileName, selectedResult.transactions)
+                  }
+                }}
+              >
+                Ekspor CSV
               </button>
             </div>
           </div>
 
-          <div className="empty-preview">
-            <div className="empty-preview-icon">▤</div>
-            <h3>Belum ada data transaksi</h3>
-            <p>
-              Upload rekening koran PDF untuk mulai memproses
-              data transaksi.
-            </p>
-          </div>
+          {copyMessage && <p className="copy-message">{copyMessage}</p>}
+
+          {extractionResults.length > 0 ? (
+            <>
+              <div className="result-tabs">
+                {extractionResults.map((item) => (
+                  <button
+                    key={item.id}
+                    className={`result-tab ${selectedResultId === item.id ? 'active' : ''}`}
+                    onClick={() => setSelectedResultId(item.id)}
+                    title={item.sourcePath}
+                  >
+                    {item.fileName}
+                    <span>{item.error ? 'Gagal' : item.transactions.length}</span>
+                  </button>
+                ))}
+              </div>
+
+              {selectedResult?.error ? (
+                <div className="result-message error">
+                  <h3>Ekstraksi gagal</h3>
+                  <p>{selectedResult.error}</p>
+                </div>
+              ) : selectedResult ? (
+                <>
+                  <div className="result-summary">
+                    <span>{selectedResult.transactions.length} transaksi ditemukan</span>
+                    <span className={selectedResult.validation.isValid ? 'validation-ok' : 'validation-warning'}>
+                      {selectedResult.validation.isValid
+                        ? 'Validasi saldo sesuai'
+                        : `${selectedResult.validation.issues.length} temuan validasi`}
+                    </span>
+                    <button
+                      className="copy-file-button"
+                      onClick={() =>
+                        void copyTransactions(selectedResult.transactions, selectedResult.fileName)
+                      }
+                    >
+                      Copy file ini
+                    </button>
+                  </div>
+
+                  {!selectedResult.validation.isValid && (
+                    <details className="validation-details">
+                      <summary>
+                        Lihat detail validasi ({selectedResult.validation.issues.length})
+                      </summary>
+                      <ul>
+                        {selectedResult.validation.issues.map((issue, index) => (
+                          <li key={`${issue.transactionIndex}-${issue.field}-${index}`}>
+                            Halaman {issue.pageNumber}: {issue.message}
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
+
+                  <div className="transaction-table-wrap">
+                    <table className="transaction-table">
+                      <thead>
+                        <tr>
+                          {OUTPUT_COLUMNS.map((column) => <th key={column}>{column}</th>)}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedResult.transactions.map((transaction, index) => (
+                          <tr key={`${transaction['TGL/BLN/THN']}-${index}`}>
+                            <td>{transaction['TGL/BLN/THN']}</td>
+                            <td>{transaction.URAIAN || '—'}</td>
+                            <td>{transaction.NAMA || '—'}</td>
+                            <td className="amount-cell">{transaction.DEBET.toLocaleString('id-ID')}</td>
+                            <td className="amount-cell">{transaction.KREDIT.toLocaleString('id-ID')}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : null}
+            </>
+          ) : (
+            <div className="empty-preview">
+              <div className="empty-preview-icon">▤</div>
+              <h3>Belum ada data transaksi</h3>
+              <p>Upload rekening koran PDF, lalu klik Ekstrak Data untuk menampilkan hasilnya.</p>
+            </div>
+          )}
+
+          {isExtracting && (
+            <div className="extracting-overlay">
+              <span className="spinner" />
+              <strong>Sedang mengekstrak dokumen...</strong>
+              <span>PDF diproses satu per satu. Mohon tunggu.</span>
+            </div>
+          )}
         </section>
       </section>
     </main>
@@ -297,12 +481,7 @@ interface DocumentItemProps {
   source: string
 }
 
-function DocumentItem({
-  name,
-  size,
-  status,
-  source,
-}: DocumentItemProps) {
+function DocumentItem({ name, size, status, source }: DocumentItemProps) {
   const statusLabels = {
     accepted: 'Diterima',
     duplicate: 'Duplikat',
@@ -312,18 +491,11 @@ function DocumentItem({
   return (
     <div className={`document-item ${status}`}>
       <div className="pdf-icon">PDF</div>
-
       <div className="document-info">
         <strong title={name}>{name}</strong>
-        <span title={source}>
-          {source}
-          {size && ` · ${size}`}
-        </span>
+        <span title={source}>{source}{size && ` · ${size}`}</span>
       </div>
-
-      <span className={`status-badge ${status}`}>
-        {statusLabels[status]}
-      </span>
+      <span className={`status-badge ${status}`}>{statusLabels[status]}</span>
     </div>
   )
 }
