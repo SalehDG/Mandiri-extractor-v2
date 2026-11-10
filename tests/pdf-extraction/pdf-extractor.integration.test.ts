@@ -1,6 +1,7 @@
+import { pathToFileURL } from 'node:url'
 import { describe, it, expect } from 'vitest'
 import { readFile } from 'node:fs/promises'
-import { resolve } from 'node:path'
+import { resolve, sep } from 'node:path'
 import { extractPdfText } from '../../src/features/pdf-extraction/services/pdf-extractor'
 
 const goldenFiles = [
@@ -18,39 +19,46 @@ const goldenFiles = [
   },
 ]
 
+const standardFontDataUrl = pathToFileURL(
+  resolve(process.cwd(), 'public/pdfjs/standard_fonts') + sep,
+).href
+
 describe('PDF Extraction - Golden Dataset', () => {
- it.each(goldenFiles)(
-  'should extract meaningful text from $name',
-  async ({ name }) => {
-    const filePath = resolve(
-      process.cwd(),
-      'tests/fixtures/golden',
-      name,
-    )
+  it.each(goldenFiles)(
+    'should extract meaningful text from $name',
+    async ({ name, expectedPages }) => {
+      const filePath = resolve(
+        process.cwd(),
+        'tests/fixtures/golden',
+        name,
+      )
 
-    const buffer = await readFile(filePath)
+      const buffer = await readFile(filePath)
 
-    const file = new File(
-      [new Uint8Array(buffer)],
-      name,
-      { type: 'application/pdf' },
-    )
+      const file = new File(
+        [new Uint8Array(buffer)],
+        name,
+        { type: 'application/pdf' },
+      )
 
-    const result = await extractPdfText(file)
+      const result = await extractPdfText(
+        file,
+        standardFontDataUrl,
+      )
 
-    const allText = result.pages
-      .flatMap((page) => page.items)
-      .map((item) => item.text)
-      .join(' ')
+      expect(result.fileName).toBe(name)
+      expect(result.totalPages).toBe(expectedPages)
+      expect(result.pages).toHaveLength(expectedPages)
 
-    // Pastikan hasil ekstraksi tidak kosong.
-    expect(allText.trim().length).toBeGreaterThan(0)
+      const allText = result.pages
+        .flatMap((page) => page.items)
+        .map((item) => item.text)
+        .join(' ')
 
-    // Pastikan hasil ekstraksi memiliki teks yang cukup.
-    expect(allText.trim().length).toBeGreaterThan(100)
-
-    // Pastikan tidak seluruh teks berupa whitespace.
-    expect(allText.replace(/\s/g, '').length).toBeGreaterThan(100)
-  },
-)
-})  
+      expect(allText.trim().length).toBeGreaterThan(100)
+      expect(
+        allText.replace(/\s/g, '').length,
+      ).toBeGreaterThan(100)
+    },
+  )
+})

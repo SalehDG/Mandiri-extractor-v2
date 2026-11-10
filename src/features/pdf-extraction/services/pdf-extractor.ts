@@ -1,3 +1,4 @@
+
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import type {
   ExtractedPdf,
@@ -7,11 +8,13 @@ import type {
 
 export async function extractPdfText(
   file: File,
+  standardFontDataUrl = `${import.meta.env.BASE_URL}pdfjs/standard_fonts/`,
 ): Promise<ExtractedPdf> {
   const fileData = new Uint8Array(await file.arrayBuffer())
 
   const loadingTask = getDocument({
     data: fileData,
+    standardFontDataUrl,
   })
 
   const pdf = await loadingTask.promise

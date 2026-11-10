@@ -84,6 +84,28 @@ export function groupPdfRemarks(
     for (const item of remarks) {
       const firstDate = dates[0]
 
+      // PRMA reference belongs to its corresponding PRMA transaction.
+      if (/^\/PRM-/i.test(item.text.trim())) {
+        const prmaStart = remarks
+        .filter(
+            (candidate) =>
+            candidate.y > item.y &&
+            candidate.text.trim() === 'PRMA CR Transf',
+  )
+  .sort((a, b) => a.y - b.y)[0]
+
+        if (prmaStart) {
+          const prmaIndex = getTransactionIndex(
+            prmaStart,
+            dates,
+          )
+
+          pageGroups[prmaIndex].items.push(item)
+          continue
+        }
+      }
+
+      // Attach continuation items to the previous page's last transaction.
       const isContinuation =
         page.pageNumber > 1 &&
         item.y > firstDate.y + PAGE_CONTINUATION_GAP
