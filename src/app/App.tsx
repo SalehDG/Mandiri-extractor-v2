@@ -60,6 +60,8 @@ function App() {
   const [selectedResultId, setSelectedResultId] = useState('')
   const [error, setError] = useState('')
   const [copyMessage, setCopyMessage] = useState('')
+  const [copyAnimating, setCopyAnimating] = useState(false)
+  const [exportAnimating, setExportAnimating] = useState(false)
 
   async function handleFiles(fileList: FileList | File[]) {
     const files = Array.from(fileList)
@@ -184,18 +186,21 @@ function App() {
 
   async function copyTransactions(transactions: TransactionOutput[], label: string) {
     if (transactions.length === 0) return
-    const text = [
-      OUTPUT_COLUMNS.join('\t'),
-      ...transactions.map((transaction) =>
-        OUTPUT_COLUMNS.map((column) => String(transaction[column])).join('\t'),
-      ),
-    ].join('\n')
+    const text = transactions.map((transaction) =>
+      OUTPUT_COLUMNS.map((column) => {
+        const value = transaction[column]
+        return value === 0 || value === null || value === undefined ? '' : String(value)
+      }).join('\t'),
+    ).join('\n')
 
+    setCopyAnimating(true)
     try {
       await navigator.clipboard.writeText(text)
       setCopyMessage(`${label} berhasil disalin.`)
     } catch {
       setCopyMessage('Tidak dapat menyalin. Periksa izin clipboard browser.')
+    } finally {
+      window.setTimeout(() => setCopyAnimating(false), 650)
     }
   }
 
@@ -369,7 +374,7 @@ function App() {
 
             <div className="preview-actions">
               <button
-                className="secondary-button"
+                className={`secondary-button ${copyAnimating ? 'is-animating' : ''}`}
                 disabled={!selectedResult || selectedResult.transactions.length === 0}
                 onClick={() => {
                   if (selectedResult) {
@@ -377,18 +382,20 @@ function App() {
                   }
                 }}
               >
-                Copy Data
+                {copyAnimating ? 'Tersalin!' : 'Copy Data'}
               </button>
               <button
-                className="export-button"
+                className={`export-button ${exportAnimating ? 'is-animating' : ''}`}
                 disabled={!selectedResult || selectedResult.transactions.length === 0}
                 onClick={() => {
                   if (selectedResult) {
+                    setExportAnimating(true)
                     downloadTransactionsCsv(selectedResult.fileName, selectedResult.transactions)
+                    window.setTimeout(() => setExportAnimating(false), 650)
                   }
                 }}
               >
-                Ekspor CSV
+                {exportAnimating ? 'Mengunduh...' : 'Ekspor CSV'}
               </button>
             </div>
           </div>
@@ -439,10 +446,10 @@ function App() {
                         {selectedResult.transactions.map((transaction, index) => (
                           <tr key={`${transaction['TGL/BLN/THN']}-${index}`}>
                             <td>{transaction['TGL/BLN/THN']}</td>
-                            <td>{transaction.URAIAN || '—'}</td>
-                            <td>{transaction.NAMA || '—'}</td>
-                            <td className="amount-cell">{transaction.DEBET.toLocaleString('id-ID')}</td>
-                            <td className="amount-cell">{transaction.KREDIT.toLocaleString('id-ID')}</td>
+                            <td>{transaction.URAIAN || ''}</td>
+                            <td>{transaction.NAMA || ''}</td>
+                            <td className="amount-cell">{transaction.DEBET === 0 ? '' : transaction.DEBET.toLocaleString('id-ID')}</td>
+                            <td className="amount-cell">{transaction.KREDIT === 0 ? '' : transaction.KREDIT.toLocaleString('id-ID')}</td>
                           </tr>
                         ))}
                       </tbody>

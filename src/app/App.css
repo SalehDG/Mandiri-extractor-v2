@@ -179,14 +179,9 @@ button:disabled {
   cursor: not-allowed;
 }
 
-.document-item.active {
-  border-color: #0866ed;
-  background: #e3efff;
-}
-
 .document-item.accepted {
-  background: #eaf2ff;
-  border-bottom-color: transparent;
+  background: #ffffff;
+  border-bottom-color: #edf0f5;
 }
 
 .document-item.duplicate {
@@ -198,6 +193,12 @@ button:disabled {
   background: #fff0f0;
   border-bottom-color: transparent;
   cursor: not-allowed;
+}
+
+.document-item.active {
+  border-color: #0866ed;
+  background: #eaf2ff;
+  box-shadow: 0 0 0 1px rgb(8 102 237 / 8%);
 }
 
 .pdf-icon {
@@ -341,12 +342,33 @@ button:disabled {
   border: 1px solid #dce5f1;
   background: #ffffff;
   color: #17213b;
+  cursor: pointer;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
 }
 
 .export-button {
   border: 1px solid #0866ed;
   background: #0866ed;
   color: #ffffff;
+  cursor: pointer;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+}
+
+.secondary-button:hover:not(:disabled),
+.export-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.secondary-button.is-animating,
+.export-button.is-animating {
+  animation: action-feedback 0.65s ease;
+}
+
+@keyframes action-feedback {
+  0% { transform: scale(1); }
+  35% { transform: scale(0.96); box-shadow: 0 0 0 4px rgb(8 102 237 / 13%); }
+  70% { transform: scale(1.02); }
+  100% { transform: scale(1); }
 }
 
 .empty-preview {

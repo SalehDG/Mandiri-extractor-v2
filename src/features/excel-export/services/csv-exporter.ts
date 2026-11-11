@@ -17,7 +17,10 @@ export function buildTransactionsCsv(
 ): string {
   const header = OUTPUT_COLUMNS.map(escapeCsv).join(',')
   const rows = transactions.map((transaction) =>
-    OUTPUT_COLUMNS.map((column) => escapeCsv(transaction[column])).join(','),
+    OUTPUT_COLUMNS.map((column) => {
+      const value = transaction[column]
+      return escapeCsv(value === 0 || value === null || value === undefined ? '' : value)
+    }).join(','),
   )
 
   // UTF-8 BOM helps spreadsheet applications recognize Indonesian text.
