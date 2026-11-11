@@ -206,7 +206,6 @@ function App() {
   const hasExtractableFiles =
     result.uniquePdfs.length > 0 ||
     (result.duplicates.length > 0 && duplicateDecision === 'include')
-  const allTransactions = extractionResults.flatMap((item) => item.transactions)
 
   return (
     <main
@@ -291,25 +290,41 @@ function App() {
             </div>
           )}
 
-          {result.uniquePdfs.map((item) => (
-            <DocumentItem
-              key={`${item.sourcePath}-${item.file.name}`}
-              name={item.file.name}
-              size={formatFileSize(item.file.size)}
-              status="accepted"
-              source={item.sourceType === 'zip' ? 'Dari ZIP' : 'PDF'}
-            />
-          ))}
+          {result.uniquePdfs.map((item) => {
+            const extraction = extractionResults.find(
+              (entry) => entry.sourcePath === item.sourcePath && entry.fileName === item.file.name,
+            )
+            return (
+              <DocumentItem
+                key={`${item.sourcePath}-${item.file.name}`}
+                name={item.file.name}
+                size={formatFileSize(item.file.size)}
+                status="accepted"
+                source={item.sourceType === 'zip' ? 'Dari ZIP' : 'PDF'}
+                active={extraction?.id === selectedResultId}
+                disabled={!extraction || isExtracting}
+                onClick={() => extraction && setSelectedResultId(extraction.id)}
+              />
+            )
+          })}
 
-          {result.duplicates.map((item, index) => (
-            <DocumentItem
-              key={`duplicate-${index}`}
-              name={item.file.file.name}
-              size={formatFileSize(item.file.file.size)}
-              status="duplicate"
-              source={`Duplikat dari ${item.duplicateOf.file.name}`}
-            />
-          ))}
+          {result.duplicates.map((item, index) => {
+            const extraction = extractionResults.find(
+              (entry) => entry.sourcePath === item.file.sourcePath && entry.fileName === item.file.file.name,
+            )
+            return (
+              <DocumentItem
+                key={`duplicate-${index}`}
+                name={item.file.file.name}
+                size={formatFileSize(item.file.file.size)}
+                status="duplicate"
+                source={`Duplikat dari ${item.duplicateOf.file.name}`}
+                active={extraction?.id === selectedResultId}
+                disabled={!extraction || isExtracting}
+                onClick={() => extraction && setSelectedResultId(extraction.id)}
+              />
+            )
+          })}
 
           {result.rejectedFiles.map((item, index) => (
             <DocumentItem
@@ -318,6 +333,7 @@ function App() {
               size=""
               status="rejected"
               source={item.reason}
+              disabled
             />
           ))}
 
@@ -354,10 +370,14 @@ function App() {
             <div className="preview-actions">
               <button
                 className="secondary-button"
-                disabled={allTransactions.length === 0}
-                onClick={() => void copyTransactions(allTransactions, 'Semua transaksi')}
+                disabled={!selectedResult || selectedResult.transactions.length === 0}
+                onClick={() => {
+                  if (selectedResult) {
+                    void copyTransactions(selectedResult.transactions, selectedResult.fileName)
+                  }
+                }}
               >
-                Copy Semua
+                Copy Data
               </button>
               <button
                 className="export-button"
@@ -377,20 +397,6 @@ function App() {
 
           {extractionResults.length > 0 ? (
             <>
-              <div className="result-tabs">
-                {extractionResults.map((item) => (
-                  <button
-                    key={item.id}
-                    className={`result-tab ${selectedResultId === item.id ? 'active' : ''}`}
-                    onClick={() => setSelectedResultId(item.id)}
-                    title={item.sourcePath}
-                  >
-                    {item.fileName}
-                    <span>{item.error ? 'Gagal' : item.transactions.length}</span>
-                  </button>
-                ))}
-              </div>
-
               {selectedResult?.error ? (
                 <div className="result-message error">
                   <h3>Ekstraksi gagal</h3>
@@ -405,14 +411,6 @@ function App() {
                         ? 'Validasi saldo sesuai'
                         : `${selectedResult.validation.issues.length} temuan validasi`}
                     </span>
-                    <button
-                      className="copy-file-button"
-                      onClick={() =>
-                        void copyTransactions(selectedResult.transactions, selectedResult.fileName)
-                      }
-                    >
-                      Copy file ini
-                    </button>
                   </div>
 
                   {!selectedResult.validation.isValid && (
@@ -479,9 +477,12 @@ interface DocumentItemProps {
   size: string
   status: 'accepted' | 'duplicate' | 'rejected'
   source: string
+  active?: boolean
+  disabled?: boolean
+  onClick?: () => void
 }
 
-function DocumentItem({ name, size, status, source }: DocumentItemProps) {
+function DocumentItem({ name, size, status, source, active = false, disabled = false, onClick }: DocumentItemProps) {
   const statusLabels = {
     accepted: 'Diterima',
     duplicate: 'Duplikat',
@@ -489,14 +490,21 @@ function DocumentItem({ name, size, status, source }: DocumentItemProps) {
   }
 
   return (
-    <div className={`document-item ${status}`}>
-      <div className="pdf-icon">PDF</div>
-      <div className="document-info">
+    <button
+      type="button"
+      className={`document-item ${status} ${active ? 'active' : ''}`}
+      onClick={onClick}
+      disabled={disabled}
+      aria-pressed={active}
+      title={disabled ? source : `Lihat hasil ekstraksi ${name}`}
+    >
+      <span className="pdf-icon">PDF</span>
+      <span className="document-info">
         <strong title={name}>{name}</strong>
         <span title={source}>{source}{size && ` · ${size}`}</span>
-      </div>
+      </span>
       <span className={`status-badge ${status}`}>{statusLabels[status]}</span>
-    </div>
+    </button>
   )
 }
 
