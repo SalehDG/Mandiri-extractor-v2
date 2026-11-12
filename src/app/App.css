@@ -292,6 +292,13 @@ button:disabled {
 .document-item.processing .status-badge {
   animation: status-pulse 1.2s ease-in-out infinite;
 }
+
+/* Keep the active document highlight above per-status background rules. */
+.document-item.active {
+  border-color: #0866ed;
+  background: #eaf2ff;
+  box-shadow: 0 0 0 1px rgb(8 102 237 / 8%);
+}
 @keyframes status-pulse {
   50% { opacity: 0.55; }
 }
