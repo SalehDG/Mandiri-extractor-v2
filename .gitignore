@@ -17,6 +17,7 @@ dist-ssr
 
 # Sensitive Golden Dataset
 /tests/fixtures/golden/
+reports
 
 # Editor directories and files
 .vscode/*
