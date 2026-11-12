@@ -261,6 +261,41 @@ button:disabled {
   color: #c52d2d;
 }
 
+
+.status-badge.pending {
+  background: #eef2f7;
+  color: #64748b;
+}
+
+.status-badge.processing {
+  background: #e8f1ff;
+  color: #1764c0;
+}
+
+.status-badge.completed {
+  background: #d9f7e8;
+  color: #078447;
+}
+
+.status-badge.failed {
+  background: #ffe0e0;
+  color: #c52d2d;
+}
+
+.document-item.pending,
+.document-item.processing,
+.document-item.completed,
+.document-item.failed {
+  background: #ffffff;
+  border-bottom-color: #edf0f5;
+}
+.document-item.processing .status-badge {
+  animation: status-pulse 1.2s ease-in-out infinite;
+}
+@keyframes status-pulse {
+  50% { opacity: 0.55; }
+}
+
 .empty-documents {
   padding: 35px 12px;
   text-align: center;

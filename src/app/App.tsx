@@ -26,6 +26,7 @@ interface FileExtractionResult {
   transactions: TransactionOutput[]
   validation: TransactionValidationResult
   error: string
+  status: 'pending' | 'processing' | 'completed' | 'failed'
 }
 
 const EMPTY_UPLOAD_RESULT: UploadProcessingResult = {
@@ -133,42 +134,72 @@ function App() {
     setIsExtracting(true)
     setError('')
     setCopyMessage('')
-
-    const nextResults: FileExtractionResult[] = []
-
-    for (const [index, item] of filesToExtract.entries()) {
-      try {
-        const extraction = await extractTransactionsFromPdf(item.file)
-
-        nextResults.push({
-          id: `${item.sourcePath}-${index}-${item.file.size}`,
-          fileName: item.file.name,
-          sourcePath: item.sourcePath,
-          pageCount: extraction.pageCount,
-          transactions: extraction.transactions,
-          validation: extraction.validation,
-          error: '',
-        })
-      } catch (extractionError) {
-        nextResults.push({
-          id: `${item.sourcePath}-${index}-${item.file.size}`,
-          fileName: item.file.name,
-          sourcePath: item.sourcePath,
-          pageCount: 0,
-          transactions: [],
-          validation: { isValid: false, issues: [], balanceChecks: 0 },
-          error:
-            extractionError instanceof Error
-              ? extractionError.message
-              : 'Gagal mengekstrak dokumen.',
-        })
-      }
-    }
-
-    setExtractionResults(nextResults)
-    setSelectedResultId(nextResults.find((item) => item.transactions.length > 0)?.id ?? nextResults[0]?.id ?? '')
     setSelectedRange(null)
-    setIsExtracting(false)
+
+    const jobs = filesToExtract.map((item, index) => ({
+      item,
+      id: `${item.sourcePath}-${index}-${item.file.size}`,
+    }))
+
+    const initialResults: FileExtractionResult[] = jobs.map(({ item, id }) => ({
+      id,
+      fileName: item.file.name,
+      sourcePath: item.sourcePath,
+      pageCount: 0,
+      transactions: [],
+      validation: { isValid: false, issues: [], balanceChecks: 0 },
+      error: '',
+      status: 'pending',
+    }))
+
+    setExtractionResults(initialResults)
+    setSelectedResultId(jobs[0]?.id ?? '')
+
+    try {
+      for (const { item, id } of jobs) {
+        setExtractionResults((previous) =>
+          previous.map((entry) =>
+            entry.id === id ? { ...entry, status: 'processing' } : entry,
+          ),
+        )
+
+        try {
+          const extraction = await extractTransactionsFromPdf(item.file)
+
+          setExtractionResults((previous) =>
+            previous.map((entry) =>
+              entry.id === id
+                ? {
+                    ...entry,
+                    pageCount: extraction.pageCount,
+                    transactions: extraction.transactions,
+                    validation: extraction.validation,
+                    error: '',
+                    status: 'completed',
+                  }
+                : entry,
+            ),
+          )
+        } catch (extractionError) {
+          setExtractionResults((previous) =>
+            previous.map((entry) =>
+              entry.id === id
+                ? {
+                    ...entry,
+                    error:
+                      extractionError instanceof Error
+                        ? extractionError.message
+                        : 'Gagal mengekstrak dokumen.',
+                    status: 'failed',
+                  }
+                : entry,
+            ),
+          )
+        }
+      }
+    } finally {
+      setIsExtracting(false)
+    }
   }
 
   function handleInputChange(event: ChangeEvent<HTMLInputElement>) {
@@ -342,7 +373,7 @@ function App() {
             onClick={() => void handleExtract()}
             disabled={!hasExtractableFiles || isProcessing || isExtracting}
           >
-            {isExtracting ? 'Mengekstrak transaksi...' : 'Ekstrak Data'}
+            {isExtracting ? 'Sedang mengekstrak...' : 'Ekstrak Data'}
           </button>
 
           <div className="document-heading">
@@ -377,10 +408,10 @@ function App() {
                 key={`${item.sourcePath}-${item.file.name}`}
                 name={item.file.name}
                 size={formatFileSize(item.file.size)}
-                status="accepted"
+                status={extraction?.status ?? 'accepted'}
                 source={item.sourceType === 'zip' ? 'Dari ZIP' : 'PDF'}
                 active={extraction?.id === selectedResultId}
-                disabled={!extraction || isExtracting}
+                disabled={!extraction}
                 onClick={() => { if (extraction) { setSelectedResultId(extraction.id); setSelectedRange(null) } }}
               />
             )
@@ -395,10 +426,10 @@ function App() {
                 key={`duplicate-${index}`}
                 name={item.file.file.name}
                 size={formatFileSize(item.file.file.size)}
-                status="duplicate"
+                status={extraction?.status ?? 'duplicate'}
                 source={`Duplikat dari ${item.duplicateOf.file.name}`}
                 active={extraction?.id === selectedResultId}
-                disabled={!extraction || isExtracting}
+                disabled={!extraction}
                 onClick={() => { if (extraction) { setSelectedResultId(extraction.id); setSelectedRange(null) } }}
               />
             )
@@ -477,7 +508,12 @@ function App() {
 
           {extractionResults.length > 0 ? (
             <>
-              {selectedResult?.error ? (
+              {selectedResult?.status === 'pending' || selectedResult?.status === 'processing' ? (
+                <div className="result-message">
+                  <h3>{selectedResult.status === 'processing' ? 'Sedang diproses' : 'Menunggu proses'}</h3>
+                  <p>{selectedResult.status === 'processing' ? 'Dokumen ini sedang diekstrak. Kamu tetap bisa membuka dokumen lain yang sudah selesai.' : 'Dokumen ini akan diekstrak sesuai antrean.'}</p>
+                </div>
+              ) : selectedResult?.error ? (
                 <div className="result-message error">
                   <h3>Ekstraksi gagal</h3>
                   <p>{selectedResult.error}</p>
@@ -590,13 +626,6 @@ function App() {
             </div>
           )}
 
-          {isExtracting && (
-            <div className="extracting-overlay">
-              <span className="spinner" />
-              <strong>Sedang mengekstrak dokumen...</strong>
-              <span>PDF diproses satu per satu. Mohon tunggu.</span>
-            </div>
-          )}
         </section>
       </section>
     </main>
@@ -606,7 +635,7 @@ function App() {
 interface DocumentItemProps {
   name: string
   size: string
-  status: 'accepted' | 'duplicate' | 'rejected'
+  status: 'accepted' | 'duplicate' | 'rejected' | 'pending' | 'processing' | 'completed' | 'failed'
   source: string
   active?: boolean
   disabled?: boolean
@@ -618,6 +647,10 @@ function DocumentItem({ name, size, status, source, active = false, disabled = f
     accepted: 'Diterima',
     duplicate: 'Duplikat',
     rejected: 'Ditolak',
+    pending: 'Menunggu',
+    processing: 'Proses',
+    completed: 'Selesai',
+    failed: 'Gagal',
   }
 
   return (
