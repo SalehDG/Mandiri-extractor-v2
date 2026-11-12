@@ -733,3 +733,137 @@ button:disabled {
     min-width: 760px;
   }
 }
+
+.selection-toolbar {
+  min-height: 48px;
+  padding: 9px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid #e9edf4;
+  color: #52627c;
+  font-size: 12px;
+}
+
+.selection-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.selection-clear-button,
+.selection-copy-button {
+  padding: 7px 11px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.selection-clear-button {
+  border: 1px solid #dbe3ef;
+  background: #fff;
+  color: #52627c;
+}
+
+.selection-copy-button {
+  border: 1px solid #0866ed;
+  background: #0866ed;
+  color: #fff;
+  transition: transform 0.15s, background 0.15s;
+}
+
+.selection-copy-button:active {
+  transform: scale(0.96);
+  background: #0757ce;
+}
+
+.transaction-table th.row-number-heading,
+.transaction-table th.row-number-cell {
+  width: 42px;
+  min-width: 42px;
+  padding: 8px 5px;
+  text-align: center;
+  background: #f7f9fc;
+  color: #71809a;
+}
+
+.row-number-cell button,
+.column-select-button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.row-number-cell button {
+  width: 100%;
+  padding: 3px 0;
+  color: #71809a;
+}
+
+.column-select-button {
+  padding: 0;
+  white-space: nowrap;
+}
+
+.transaction-table td {
+  user-select: none;
+  cursor: cell;
+}
+
+.transaction-table td.cell-selected {
+  background: #dceaff !important;
+  outline: 1px solid #4b91f1;
+  outline-offset: -1px;
+}
+
+.transaction-table tbody tr:has(td.cell-selected) .row-number-cell {
+  background: #eaf2ff;
+}
+
+@media (max-width: 600px) {
+  .selection-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+.selection-toolbar-floating {
+  position: fixed;
+  z-index: 1000;
+  min-height: 0;
+  width: max-content;
+  max-width: min(420px, calc(100vw - 24px));
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  border: 1px solid #d6e2f3;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgb(20 40 80 / 18%);
+  color: #52627c;
+  font-size: 12px;
+}
+
+.selection-toolbar-floating .selection-copy-button {
+  min-width: 64px;
+  white-space: nowrap;
+}
+
+.selection-copy-button.is-copied {
+  animation: copy-confirm 0.35s ease;
+}
+
+@keyframes copy-confirm {
+  50% { transform: scale(0.92); }
+}
+
+.transaction-table td {
+  user-select: none;
+  cursor: cell;
+}

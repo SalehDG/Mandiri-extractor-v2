@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ChangeEvent, DragEvent } from 'react'
 import { processUploadedFiles } from '../features/pdf-upload/services/upload-processor'
 import type {
@@ -50,6 +50,9 @@ function formatFileSize(bytes: number): string {
 function App() {
   const inputRef = useRef<HTMLInputElement>(null)
   const dragCounter = useRef(0)
+  const isSelectingCells = useRef(false)
+  const selectionToolbarRef = useRef<HTMLDivElement>(null)
+  const transactionTableRef = useRef<HTMLDivElement>(null)
 
   const [isDragging, setIsDragging] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
@@ -62,6 +65,29 @@ function App() {
   const [copyMessage, setCopyMessage] = useState('')
   const [copyAnimating, setCopyAnimating] = useState(false)
   const [exportAnimating, setExportAnimating] = useState(false)
+  const [selectedRange, setSelectedRange] = useState<{ startRow: number; endRow: number; startCol: number; endCol: number } | null>(null)
+  const [selectionPosition, setSelectionPosition] = useState({ x: 0, y: 0 })
+
+  useEffect(() => {
+    if (!selectedRange) return
+
+    function handleOutsidePointerDown(event: PointerEvent) {
+      const target = event.target as Node
+      if (selectionToolbarRef.current?.contains(target) || transactionTableRef.current?.contains(target)) return
+      isSelectingCells.current = false
+      setSelectedRange(null)
+    }
+
+    document.addEventListener('pointerdown', handleOutsidePointerDown)
+    return () => document.removeEventListener('pointerdown', handleOutsidePointerDown)
+  }, [selectedRange])
+
+  function updateSelectionPosition(clientX: number, clientY: number) {
+    setSelectionPosition({
+      x: Math.max(12, Math.min(clientX + 12, window.innerWidth - 280)),
+      y: Math.max(12, Math.min(clientY + 12, window.innerHeight - 76)),
+    })
+  }
 
   async function handleFiles(fileList: FileList | File[]) {
     const files = Array.from(fileList)
@@ -141,6 +167,7 @@ function App() {
 
     setExtractionResults(nextResults)
     setSelectedResultId(nextResults.find((item) => item.transactions.length > 0)?.id ?? nextResults[0]?.id ?? '')
+    setSelectedRange(null)
     setIsExtracting(false)
   }
 
@@ -180,6 +207,7 @@ function App() {
     setDuplicateDecision(null)
     setExtractionResults([])
     setSelectedResultId('')
+    setSelectedRange(null)
     setError('')
     setCopyMessage('')
   }
@@ -197,6 +225,51 @@ function App() {
     try {
       await navigator.clipboard.writeText(text)
       setCopyMessage(`${label} berhasil disalin.`)
+    } catch {
+      setCopyMessage('Tidak dapat menyalin. Periksa izin clipboard browser.')
+    } finally {
+      window.setTimeout(() => setCopyAnimating(false), 650)
+    }
+  }
+
+  function selectCell(row: number, col: number, extend = false) {
+    setSelectedRange((current) => ({
+      startRow: extend && current ? current.startRow : row,
+      endRow: row,
+      startCol: extend && current ? current.startCol : col,
+      endCol: col,
+    }))
+  }
+
+  function isCellSelected(row: number, col: number): boolean {
+    if (!selectedRange) return false
+    const minRow = Math.min(selectedRange.startRow, selectedRange.endRow)
+    const maxRow = Math.max(selectedRange.startRow, selectedRange.endRow)
+    const minCol = Math.min(selectedRange.startCol, selectedRange.endCol)
+    const maxCol = Math.max(selectedRange.startCol, selectedRange.endCol)
+    return row >= minRow && row <= maxRow && col >= minCol && col <= maxCol
+  }
+
+  function getTransactionCell(transaction: TransactionOutput, columnIndex: number): string {
+    const value = transaction[OUTPUT_COLUMNS[columnIndex]]
+    if (value === 0 || value === '0' || value === null || value === undefined || value === '') return ''
+    return typeof value === 'number' ? value.toLocaleString('id-ID') : String(value)
+  }
+
+  async function copySelectedRange() {
+    if (!selectedResult || !selectedRange) return
+    const minRow = Math.min(selectedRange.startRow, selectedRange.endRow)
+    const maxRow = Math.max(selectedRange.startRow, selectedRange.endRow)
+    const minCol = Math.min(selectedRange.startCol, selectedRange.endCol)
+    const maxCol = Math.max(selectedRange.startCol, selectedRange.endCol)
+    const text = selectedResult.transactions.slice(minRow, maxRow + 1).map((transaction) =>
+      OUTPUT_COLUMNS.slice(minCol, maxCol + 1).map((_, offset) => getTransactionCell(transaction, minCol + offset)).join('\t'),
+    ).join('\n')
+
+    setCopyAnimating(true)
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopyMessage(`Pilihan ${maxRow - minRow + 1} baris × ${maxCol - minCol + 1} kolom berhasil disalin.`)
     } catch {
       setCopyMessage('Tidak dapat menyalin. Periksa izin clipboard browser.')
     } finally {
@@ -308,7 +381,7 @@ function App() {
                 source={item.sourceType === 'zip' ? 'Dari ZIP' : 'PDF'}
                 active={extraction?.id === selectedResultId}
                 disabled={!extraction || isExtracting}
-                onClick={() => extraction && setSelectedResultId(extraction.id)}
+                onClick={() => { if (extraction) { setSelectedResultId(extraction.id); setSelectedRange(null) } }}
               />
             )
           })}
@@ -326,7 +399,7 @@ function App() {
                 source={`Duplikat dari ${item.duplicateOf.file.name}`}
                 active={extraction?.id === selectedResultId}
                 disabled={!extraction || isExtracting}
-                onClick={() => extraction && setSelectedResultId(extraction.id)}
+                onClick={() => { if (extraction) { setSelectedResultId(extraction.id); setSelectedRange(null) } }}
               />
             )
           })}
@@ -435,21 +508,72 @@ function App() {
                     </details>
                   )}
 
-                  <div className="transaction-table-wrap">
+                  {selectedRange && (
+                    <div
+                      ref={selectionToolbarRef}
+                      className="selection-toolbar selection-toolbar-floating"
+                      style={{ left: selectionPosition.x, top: selectionPosition.y }}
+                    >
+                      <button
+                        className={`selection-copy-button${copyAnimating ? ' is-copied' : ''}`}
+                        aria-label="Copy"
+                        title="Copy"
+                        onClick={() => void copySelectedRange()}
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  )}
+                  <div ref={transactionTableRef} className="transaction-table-wrap" onMouseUp={() => { isSelectingCells.current = false }}>
                     <table className="transaction-table">
                       <thead>
                         <tr>
-                          {OUTPUT_COLUMNS.map((column) => <th key={column}>{column}</th>)}
+                          {OUTPUT_COLUMNS.map((column, columnIndex) => (
+                            <th key={column}>
+                              <button
+                                className="column-select-button"
+                                onClick={(event) => {
+                                  updateSelectionPosition(event.clientX, event.clientY)
+                                  setSelectedRange({ startRow: 0, endRow: selectedResult.transactions.length - 1, startCol: columnIndex, endCol: columnIndex })
+                                }}
+                                title={`Pilih seluruh kolom ${column}`}
+                              >
+                                {column}
+                              </button>
+                            </th>
+                          ))}
                         </tr>
                       </thead>
                       <tbody>
                         {selectedResult.transactions.map((transaction, index) => (
                           <tr key={`${transaction['TGL/BLN/THN']}-${index}`}>
-                            <td>{transaction['TGL/BLN/THN']}</td>
-                            <td>{transaction.URAIAN || ''}</td>
-                            <td>{transaction.NAMA || ''}</td>
-                            <td className="amount-cell">{transaction.DEBET === 0 ? '' : transaction.DEBET.toLocaleString('id-ID')}</td>
-                            <td className="amount-cell">{transaction.KREDIT === 0 ? '' : transaction.KREDIT.toLocaleString('id-ID')}</td>
+                            {OUTPUT_COLUMNS.map((column, columnIndex) => (
+                              <td
+                                key={column}
+                                className={`${columnIndex >= 3 ? 'amount-cell ' : ''}${isCellSelected(index, columnIndex) ? 'cell-selected' : ''}`}
+                                onMouseDown={(event) => {
+                                  if (event.button === 0) {
+                                    isSelectingCells.current = true
+                                    updateSelectionPosition(event.clientX, event.clientY)
+                                    selectCell(index, columnIndex, event.shiftKey)
+                                  }
+                                }}
+                                onMouseEnter={(event) => {
+                                  if (isSelectingCells.current) {
+                                    updateSelectionPosition(event.clientX, event.clientY)
+                                    selectCell(index, columnIndex, true)
+                                  }
+                                }}
+                                onClick={(event) => {
+                                  if (event.shiftKey) {
+                                    updateSelectionPosition(event.clientX, event.clientY)
+                                    selectCell(index, columnIndex, true)
+                                  }
+                                }}
+                              >
+                                {getTransactionCell(transaction, columnIndex)}
+                              </td>
+                            ))}
                           </tr>
                         ))}
                       </tbody>
